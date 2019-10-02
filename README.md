@@ -1,2 +1,2 @@
 # kafka-streaming
-The project house Kafka Streaming apps
+This project houses Kafka Streaming apps
