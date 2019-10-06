@@ -11,5 +11,6 @@
     <modules>
         <module>word-count-app</module>
         <module>fav-color-app</module>
+        <module>bank-balance-exactly-once</module>
     </modules>
 </project>
