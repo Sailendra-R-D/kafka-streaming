@@ -42,11 +42,11 @@ public class FavoriteColorStreamApp {
 
         // step 3 - we count the occurrences of colours
         KTable<String, Long> favouriteColours = usersAndColoursTable
-                // 4 - we group by colour within the KTable
+                // 5 - we group by colour within the KTable
                 .groupBy((user, colour) -> new KeyValue<>(colour, colour))
                 .count();
 
-        // 5 - we output the results to a Kafka Topic
+        // 6 - we output the results to a Kafka Topic
         favouriteColours.toStream().to("favourite-colour-output");
 
         Topology topology = builder.build(config);
