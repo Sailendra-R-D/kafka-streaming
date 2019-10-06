@@ -6,7 +6,8 @@
         <sourceOutputDir name="target/generated-sources/annotations" />
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
-        <module name="kafka-streams-project" />
+        <module name="word-count-app" />
+        <module name="fav-color-app" />
       </profile>
     </annotationProcessing>
   </component>
