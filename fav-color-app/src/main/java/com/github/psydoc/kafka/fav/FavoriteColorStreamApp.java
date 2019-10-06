@@ -46,7 +46,7 @@ public class FavoriteColorStreamApp {
                 .groupBy((user, colour) -> new KeyValue<>(colour, colour))
                 .count();
 
-        // 6 - we output the results to a Kafka Topic
+        // 5 - we output the results to a Kafka Topic
         favouriteColours.toStream().to("favourite-colour-output");
 
         Topology topology = builder.build(config);
