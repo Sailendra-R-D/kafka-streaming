@@ -1,6 +1,8 @@
 package com.github.sailendra.bank.transaction;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Deserializer;
 import org.apache.kafka.common.serialization.Serde;
@@ -9,9 +11,9 @@ import org.apache.kafka.common.serialization.Serializer;
 import org.apache.kafka.connect.json.JsonDeserializer;
 import org.apache.kafka.connect.json.JsonSerializer;
 import org.apache.kafka.streams.*;
-import org.apache.kafka.streams.kstream.Consumed;
-import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.*;
 
+import java.time.Instant;
 import java.util.Properties;
 
 public class BankBalanceExactlyOnceApp {
@@ -27,19 +29,29 @@ public class BankBalanceExactlyOnceApp {
         config.put(StreamsConfig.PROCESSING_GUARANTEE_CONFIG, StreamsConfig.EXACTLY_ONCE);
         config.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        // custom Serde
+        // custom Serde for JSON
         final Serializer<JsonNode> jsonSerializer = new JsonSerializer();
         final Deserializer<JsonNode> jsonDeserializer = new JsonDeserializer();
         final Serde<JsonNode> jsonSerde = Serdes.serdeFrom(jsonSerializer, jsonDeserializer);
 
         StreamsBuilder builder = new StreamsBuilder();
 
-        // Step 1: We create KStream of key and Json object as value
-        KStream<String, JsonNode> transactions = builder
-                .stream(INPUT_TOPIC, Consumed.with(Serdes.String(), jsonSerde));
+        KStream<String, JsonNode> transactions = builder.stream(INPUT_TOPIC, Consumed.with(Serdes.String(), jsonSerde));
 
-        transactions.foreach((k, v) ->
-                System.out.println(k + " " + v.get("amount").asText()));
+        // create the initial json object for balances
+        ObjectNode initialBalance = JsonNodeFactory.instance.objectNode();
+        initialBalance.put("count", 0);
+        initialBalance.put("balance", 0);
+        initialBalance.put("time", Instant.ofEpochMilli(0L).toString());
+
+        //can also use reduce operation as LHS == RHS
+        KTable<String, JsonNode> bankBalance = transactions.groupByKey(Grouped.with(Serdes.String(), jsonSerde)).aggregate(
+                () -> initialBalance,
+                (k, transaction, balance) -> newBalance(transaction, balance),
+                Materialized.with(Serdes.String(), jsonSerde)
+        );
+
+        bankBalance.toStream().to("bank-balance-exactly-once", Produced.with(Serdes.String(), jsonSerde));
 
         Topology topology = builder.build(config);
         KafkaStreams streams = new KafkaStreams(topology, config);
@@ -51,6 +63,19 @@ public class BankBalanceExactlyOnceApp {
 
         // shutdown hook to correctly close the streams application
         Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+    }
 
+    private static JsonNode newBalance(JsonNode transaction, JsonNode balance) {
+        // create a new balance json object
+        ObjectNode newBalance = JsonNodeFactory.instance.objectNode();
+        newBalance.put("count", balance.get("count").asInt() + 1);
+        newBalance.put("balance", balance.get("balance").asInt() + transaction.get("amount").asInt());
+
+        Long balanceEpoch = Instant.parse(balance.get("time").asText()).toEpochMilli();
+        Long transactionEpoch = Instant.parse(transaction.get("time").asText()).toEpochMilli();
+        Instant newBalanceInstant = Instant.ofEpochMilli(Math.max(balanceEpoch, transactionEpoch));
+        newBalance.put("time", newBalanceInstant.toString());
+
+        return newBalance;
     }
 }

@@ -7,8 +7,8 @@
         <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
         <outputRelativeToContentRoot value="true" />
         <module name="bank-balance-exactly-once" />
-        <module name="word-count-app" />
         <module name="fav-color-app" />
+        <module name="word-count-app" />
       </profile>
     </annotationProcessing>
   </component>
