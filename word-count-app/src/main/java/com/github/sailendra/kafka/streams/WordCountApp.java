@@ -5,11 +5,39 @@ import org.apache.kafka.common.serialization.Serdes;
 import org.apache.kafka.streams.*;
 import org.apache.kafka.streams.kstream.KStream;
 import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
 
 import java.util.Arrays;
 import java.util.Properties;
 
 public class WordCountApp {
+
+    public Topology createTopology() {
+        StreamsBuilder builder = new StreamsBuilder();
+        // 1 - stream from Kafka
+
+        KStream<String, String> textLines = builder.stream("word-count-input");
+        KTable<String, Long> wordCounts = textLines
+                // 2 - map values to lowercase
+                .mapValues(textLine -> textLine.toLowerCase())
+                // can be alternatively written as:
+                // .mapValues(String::toLowerCase)
+                // 3 - flatmap values split by space
+                .flatMapValues(textLine -> Arrays.asList(textLine.split("\\W+")))
+                // 4 - select key to apply a key (we discard the old key)
+                .selectKey((key, word) -> word)
+                // 5 - group by key before aggregation
+                .groupByKey()
+                // 6 - count occurences
+                .count(Materialized.as("Counts"));
+
+        // 7 - to in order to write the results back to kafka
+        wordCounts.toStream().to("word-count-output", Produced.with(Serdes.String(), Serdes.Long()));
+
+        return builder.build();
+    }
+
     public static void main(String[] args) {
         Properties config = new Properties();
         config.put(StreamsConfig.APPLICATION_ID_CONFIG, "wordcount-application");
@@ -19,27 +47,9 @@ public class WordCountApp {
         config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         config.setProperty(StreamsConfig.TOPOLOGY_OPTIMIZATION, StreamsConfig.OPTIMIZE); //built with kafka streams 2.3.0
 
-        StreamsBuilder builder = new StreamsBuilder();
+        WordCountApp wordCountApp = new WordCountApp();
 
-        // 1 - stream from Kafka
-        KStream<String, String> wordCountInput = builder.stream("word-count-input");
-
-        // 2 - map values to lowercase
-        KTable<String, Long> wordCounts = wordCountInput.mapValues(textLine -> textLine.toLowerCase())
-                // can be alternatively written as :
-                // .mapValues(String::toLowerCase)
-                // 3 - flatmap values split by space
-                .flatMapValues(lowercasedTextLine -> Arrays.asList(lowercasedTextLine.split("\\W+")))
-                // 4 - select key to apply a key (we discard the old key)
-                .selectKey((ignoredKey, value) -> value)
-                // 5 - group by key before aggregation
-                .groupByKey()
-                // 6 - count occurrences
-                .count();
-
-        wordCounts.toStream().to("word-count-output");
-
-        Topology topology = builder.build(config);
+        Topology topology = wordCountApp.createTopology();
         KafkaStreams streams = new KafkaStreams(topology, config);
         streams.start();
 
@@ -49,5 +59,6 @@ public class WordCountApp {
 
         // shutdown hook to correctly close the streams application
         Runtime.getRuntime().addShutdownHook(new Thread(streams::close));
+
     }
 }

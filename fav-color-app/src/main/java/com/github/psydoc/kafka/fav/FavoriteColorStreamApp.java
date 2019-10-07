@@ -3,8 +3,13 @@ package com.github.psydoc.kafka.fav;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.Serde;
 import org.apache.kafka.common.serialization.Serdes;
+import org.apache.kafka.common.utils.Bytes;
 import org.apache.kafka.streams.*;
-import org.apache.kafka.streams.kstream.*;
+import org.apache.kafka.streams.kstream.KStream;
+import org.apache.kafka.streams.kstream.KTable;
+import org.apache.kafka.streams.kstream.Materialized;
+import org.apache.kafka.streams.kstream.Produced;
+import org.apache.kafka.streams.state.KeyValueStore;
 
 import java.util.Arrays;
 import java.util.Properties;
@@ -37,6 +42,9 @@ public class FavoriteColorStreamApp {
 
         usersAndColours.to("user-keys-and-colours");
 
+        Serde<String> stringSerde = Serdes.String();
+        Serde<Long> longSerde = Serdes.Long();
+
         // step 2 - we read that topic as a KTable so that updates are read correctly
         KTable<String, String> usersAndColoursTable = builder.table("user-keys-and-colours");
 
@@ -44,10 +52,12 @@ public class FavoriteColorStreamApp {
         KTable<String, Long> favouriteColours = usersAndColoursTable
                 // 5 - we group by colour within the KTable
                 .groupBy((user, colour) -> new KeyValue<>(colour, colour))
-                .count();
+                .count(Materialized.<String, Long, KeyValueStore<Bytes, byte[]>>as("CountsByColours")
+                        .withKeySerde(stringSerde)
+                        .withValueSerde(longSerde));
 
         // 6 - we output the results to a Kafka Topic
-        favouriteColours.toStream().to("favourite-colour-output");
+        favouriteColours.toStream().to("favourite-colour-output", Produced.with(Serdes.String(), Serdes.Long()));
 
         Topology topology = builder.build(config);
         KafkaStreams streams = new KafkaStreams(topology, config);
