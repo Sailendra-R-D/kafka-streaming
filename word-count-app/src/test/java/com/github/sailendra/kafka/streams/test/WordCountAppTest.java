@@ -16,6 +16,11 @@ import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 
+import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.util.Properties;
 
 public class WordCountAppTest {
@@ -25,11 +30,12 @@ public class WordCountAppTest {
     StringSerializer stringSerializer = new StringSerializer();
 
     ConsumerRecordFactory<String, String> recordFactory = new ConsumerRecordFactory<>(stringSerializer, stringSerializer);
+    String appId = "test_app";
 
     @Before
     public void setUpTopologyTestDriver() {
         Properties config = new Properties();
-        config.put(StreamsConfig.APPLICATION_ID_CONFIG, "test_app");
+        config.put(StreamsConfig.APPLICATION_ID_CONFIG, appId);
         config.put(StreamsConfig.BOOTSTRAP_SERVERS_CONFIG, "dummy:1234");
         config.put(StreamsConfig.DEFAULT_KEY_SERDE_CLASS_CONFIG, Serdes.String().getClass());
         config.put(StreamsConfig.DEFAULT_VALUE_SERDE_CLASS_CONFIG, Serdes.String().getClass());
@@ -41,7 +47,19 @@ public class WordCountAppTest {
 
     @After
     public void closeTestDriver() {
-        testDriver.close();
+        try {
+            testDriver.close();
+        } catch (Exception e) {
+            //there is a bug on Windows that does not delete the state directory properly.
+            // In order for the test to pass, the directory must be deleted manually
+            try {
+                Files.walk(Paths.get(String.format("C:\\tmp\\kafka-streams\\%s", appId)))
+                        .map(Path::toFile)
+                        .sorted((o1, o2) -> -o1.compareTo(o2))
+                        .forEach(File::delete);
+            } catch (IOException ex) {
+            }
+        }
     }
 
     public void pushNewInputRecord(String value) {
